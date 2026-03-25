@@ -1,0 +1,24 @@
+[build]
+  publish = "."
+  command = ""
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Production deploy from main branch
+[context.production]
+  publish = "."
+
+# Deploy previews for all pull requests
+[context.deploy-preview]
+  publish = "."
+
+# Branch deploys
+[context.branch-deploy]
+  publish = "."
+
+# Redirect SPA routes to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
