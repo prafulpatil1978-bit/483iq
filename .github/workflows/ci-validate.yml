@@ -1,4 +1,4 @@
-name: CI — Deploy to Netlify
+name: CI — Deploy SPA
 
 on:
   push:
@@ -6,9 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   deploy:
-    name: Deploy SPA to Netlify
+    name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,49 +21,36 @@ jobs:
       - name: Validate SPA structure
         run: |
           test -f index.html && echo "✅ index.html present" || (echo "❌ index.html missing" && exit 1)
-          test -f netlify.toml && echo "✅ netlify.toml present"
-          echo "📦 File size: $(wc -c < index.html) bytes"
+          echo "📦 Size: $(wc -c < index.html | numfmt --to=iec) bytes"
 
-      - name: Deploy to Netlify (API upload — no build credits used)
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          exclude_assets: '.github,etl-fda483.js,*.md,*.toml'
+
+      - name: Deploy to Netlify (when credits available)
+        if: github.ref == 'refs/heads/main'
         env:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
         run: |
-          # Upload index.html directly to Netlify deploy API
-          SHA=$(shasum -a 1 index.html | cut -d' ' -f1)
-
-          # Create a new deploy
+          SHA=$(sha1sum index.html | cut -d' ' -f1)
           DEPLOY=$(curl -s -X POST \
             -H "Authorization: Bearer $NETLIFY_TOKEN" \
             -H "Content-Type: application/json" \
             "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys" \
             -d "{\"files\":{\"/index.html\":\"$SHA\"}}")
-
-          DEPLOY_ID=$(echo "$DEPLOY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))")
-          echo "Deploy ID: $DEPLOY_ID"
-
-          if [ -z "$DEPLOY_ID" ]; then
-            echo "Failed to create deploy: $DEPLOY"
-            exit 1
+          DEPLOY_ID=$(echo "$DEPLOY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null)
+          if [ -n "$DEPLOY_ID" ]; then
+            curl -s -X PUT \
+              -H "Authorization: Bearer $NETLIFY_TOKEN" \
+              -H "Content-Type: text/html" \
+              --data-binary @index.html \
+              "https://api.netlify.com/api/v1/deploys/$DEPLOY_ID/files/index.html"
+            echo "✅ Deployed to Netlify"
+          else
+            echo "⚠️  Netlify deploy skipped (credits exceeded) — site live on GitHub Pages"
           fi
-
-          # Upload the file
-          curl -s -X PUT \
-            -H "Authorization: Bearer $NETLIFY_TOKEN" \
-            -H "Content-Type: text/html" \
-            --data-binary @index.html \
-            "https://api.netlify.com/api/v1/deploys/$DEPLOY_ID/files/index.html"
-
-          echo "✅ Deployed to https://483iq.netlify.app"
-
-      - name: Comment deploy preview on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '🚀 Deploy preview ready at https://483iq.netlify.app'
-            })
