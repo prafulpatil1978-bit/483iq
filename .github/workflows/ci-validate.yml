@@ -1,4 +1,4 @@
-name: CI — Validate on Push
+name: CI — Deploy to Netlify
 
 on:
   push:
@@ -7,12 +7,58 @@ on:
     branches: [main]
 
 jobs:
-  validate:
+  deploy:
+    name: Deploy SPA to Netlify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Validate SPA structure
         run: |
           test -f index.html && echo "✅ index.html present" || (echo "❌ index.html missing" && exit 1)
           test -f netlify.toml && echo "✅ netlify.toml present"
-          echo "📦 Netlify auto-deploy triggered via GitHub integration"
+          echo "📦 File size: $(wc -c < index.html) bytes"
+
+      - name: Deploy to Netlify (API upload — no build credits used)
+        env:
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_TOKEN: ${{ secrets.NETLIFY_TOKEN }}
+        run: |
+          # Upload index.html directly to Netlify deploy API
+          SHA=$(shasum -a 1 index.html | cut -d' ' -f1)
+
+          # Create a new deploy
+          DEPLOY=$(curl -s -X POST \
+            -H "Authorization: Bearer $NETLIFY_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.netlify.com/api/v1/sites/$NETLIFY_SITE_ID/deploys" \
+            -d "{\"files\":{\"/index.html\":\"$SHA\"}}")
+
+          DEPLOY_ID=$(echo "$DEPLOY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))")
+          echo "Deploy ID: $DEPLOY_ID"
+
+          if [ -z "$DEPLOY_ID" ]; then
+            echo "Failed to create deploy: $DEPLOY"
+            exit 1
+          fi
+
+          # Upload the file
+          curl -s -X PUT \
+            -H "Authorization: Bearer $NETLIFY_TOKEN" \
+            -H "Content-Type: text/html" \
+            --data-binary @index.html \
+            "https://api.netlify.com/api/v1/deploys/$DEPLOY_ID/files/index.html"
+
+          echo "✅ Deployed to https://483iq.netlify.app"
+
+      - name: Comment deploy preview on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Deploy preview ready at https://483iq.netlify.app'
+            })
