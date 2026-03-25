@@ -1,0 +1,34 @@
+name: ETL — FDA 483 Weekly Ingest
+
+on:
+  schedule:
+    - cron: "0 22 * * 0"
+  workflow_dispatch:
+
+jobs:
+  etl:
+    name: Ingest FDA 483 Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install pg
+      - name: Run ETL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "No DATABASE_URL set — running dry run"
+            node etl-fda483.js --dry-run
+          else
+            node etl-fda483.js
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fda-data-${{ github.run_number }}
+          path: data/
+          retention-days: 7
