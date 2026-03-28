@@ -254,7 +254,7 @@ class DB {
     const { Pool } = require('pg');
     const connStr = process.env.DATABASE_URL;
     this.pool = connStr
-      ? new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false } })
+      ? new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false }, family: 4 })
       : new Pool({
           host:     process.env.DB_HOST     || 'localhost',
           port:     parseInt(process.env.DB_PORT || '5432'),
