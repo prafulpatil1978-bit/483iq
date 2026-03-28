@@ -20,17 +20,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: npm install pg
-      - name: Run ETL
+      - name: Run ETL via Supabase REST API
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           CSV="${{ github.event.inputs.csv_file || 'data/fda483_sample.csv' }}"
-          if [ -z "$DATABASE_URL" ]; then
-            node --dns-result-order=ipv4first etl-fda483.js --file "$CSV" --dry-run
-          else
-            node --dns-result-order=ipv4first etl-fda483.js --file "$CSV"
-          fi
+          node etl-rest.js --file "$CSV"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
