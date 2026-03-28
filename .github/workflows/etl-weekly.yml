@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "0 22 * * 0"
   workflow_dispatch:
+    inputs:
+      csv_file:
+        description: "CSV file path"
+        required: false
+        default: "data/fda483_sample.csv"
 
 jobs:
   etl:
@@ -20,15 +25,15 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          CSV="${{ github.event.inputs.csv_file || 'data/fda483_sample.csv' }}"
           if [ -z "$DATABASE_URL" ]; then
-            echo "No DATABASE_URL set — running dry run"
-            node etl-fda483.js --dry-run
+            node etl-fda483.js --file "$CSV" --dry-run
           else
-            node etl-fda483.js
+            node etl-fda483.js --file "$CSV"
           fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fda-data-${{ github.run_number }}
+          name: etl-log-${{ github.run_number }}
           path: data/
           retention-days: 7
